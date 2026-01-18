@@ -1,0 +1,84 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./go.mod
+
+      - name: Summary Information
+        run: |
+          echo "# Push Summary" > $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Push:** ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Author:** ${{ github.event.head_commit.author.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Tools and versions
+        run: |
+          echo "## Tools and versions" >> $GITHUB_STEP_SUMMARY
+
+          ubuntu_version=$(lsb_release -a 2>&1 | grep "Description" | awk '{print $2, $3, $4}')
+          echo "Ubuntu version: $ubuntu_version"
+          echo "**Ubuntu Version:** $ubuntu_version" >> $GITHUB_STEP_SUMMARY
+
+          bash_version=$(bash --version | head -n 1 | awk '{print $4}')
+          echo "Bash version: $bash_version"
+          echo "**Bash Version:** $bash_version" >> $GITHUB_STEP_SUMMARY
+
+          git_version=$(git --version | awk '{print $3}')
+          echo "Git version: $git_version"
+          echo "**Git Version:** $git_version" >> $GITHUB_STEP_SUMMARY
+
+          go_version=$(go version | awk '{print $3}')
+          echo "Go version: $go_version"
+          echo "**Go Version:** $go_version" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Lines of code
+        run: |
+          echo "## Lines of code" >> $GITHUB_STEP_SUMMARY
+
+          go install github.com/boyter/scc/v3@latest
+          scc --format html-table . | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: test
+        run: |
+          echo "### Test report" >> $GITHUB_STEP_SUMMARY
+
+          go test -race -coverprofile=coverage.txt -covermode=atomic -tags=unit ./... | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: test coverage
+        run: |
+          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+
+          go install github.com/vladopajic/go-test-coverage/v2@latest
+
+          # execute again to get the summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Coverage report" >> $GITHUB_STEP_SUMMARY
+          go-test-coverage --config=./.testcoverage.yml | sed 's/PASS/PASS  ✅/g' | sed 's/FAIL/FAIL  ❌/g' | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Build
+        run: |
+          echo "## Build" >> $GITHUB_STEP_SUMMARY
+
+          go build ./... | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Build completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY

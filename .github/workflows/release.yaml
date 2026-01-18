@@ -1,0 +1,75 @@
+name: Release
+
+# https://help.github.com/es/actions/reference/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+on:
+  push:
+    tags:
+      - v[0-9].[0-9]+.[0-9]*
+
+permissions:
+  id-token: write
+  security-events: write
+  actions: write
+  contents: write
+  pull-requests: read
+  packages: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Go 1.x
+        id: go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./go.mod
+
+      - name: Summary Information
+        run: |
+          echo "# Build Summary" > $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Who merge:** ${{ github.triggering_actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit ID:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Lines of code
+        run: |
+          echo "## Lines of code" >> $GITHUB_STEP_SUMMARY
+
+          go install github.com/boyter/scc/v3@latest
+          scc --format html-table . | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: test
+        run: |
+          echo "### Test report" >> $GITHUB_STEP_SUMMARY
+
+          go test -race -coverprofile=coverage.txt -covermode=atomic -tags=unit ./... | tee -a $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: test coverage
+        run: |
+          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+
+          go install github.com/vladopajic/go-test-coverage/v2@latest
+
+          # execute again to get the summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Coverage report" >> $GITHUB_STEP_SUMMARY
+          go-test-coverage --config=./.testcoverage.yml | sed 's/PASS/PASS  ✅/g' | sed 's/FAIL/FAIL  ❌/g' | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          make_latest: true
