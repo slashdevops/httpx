@@ -2,6 +2,8 @@
 // with advanced features including fluent request building, automatic retry logic,
 // and type-safe generic clients.
 //
+// Requirements: Go 1.22 or higher is required to use this package.
+//
 // Zero Dependencies: This package is built entirely using the Go standard library,
 // with no external dependencies. This ensures maximum reliability, security, and
 // minimal maintenance overhead for your projects.

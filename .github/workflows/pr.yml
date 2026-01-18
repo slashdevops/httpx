@@ -55,9 +55,24 @@ jobs:
 
       - name: Lines of code
         run: |
-          echo "## Lines of code" >> $GITHUB_STEP_SUMMARY
+          export TOOL_NAME="scc"
+          export GIT_ORG="boyter"
+          export GIT_REPO="scc"
+          export OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          export OS_ARCH=$(uname -m | tr '[:upper:]' '[:lower:]')
+          export ASSETS_NAME=$(gh release view --repo ${GIT_ORG}/${GIT_REPO} --json assets -q "[.assets[] | select(.name | contains(\"${TOOL_NAME}\") and contains(\"${OS}\") and contains(\"${OS_ARCH}\"))] | sort_by(.createdAt) | last.name")
+          export APP_NAME="${ASSETS_NAME%.*}"
 
-          go install github.com/boyter/scc/v3@latest
+          gh release download --repo $GIT_ORG/$GIT_REPO --pattern $ASSETS_NAME
+          unzip $ASSETS_NAME
+          mv $APP_NAME $TOOL_NAME
+          rm $ASSETS_NAME
+
+          mv $TOOL_NAME ~/go/bin/$TOOL_NAME
+          ~/go/bin/$TOOL_NAME --version
+
+          # go install github.com/boyter/scc/v3@latest
+
           scc --format html-table . | tee -a $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
