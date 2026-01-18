@@ -82,12 +82,17 @@ jobs:
         run: |
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
 
-          go install github.com/vladopajic/go-test-coverage/v2@latest
-
-          # execute again to get the summary
+          # Generate coverage report using standard library tools
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Coverage report" >> $GITHUB_STEP_SUMMARY
-          go-test-coverage --config=./.testcoverage.yml | sed 's/PASS/PASS  ✅/g' | sed 's/FAIL/FAIL  ❌/g' | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.txt | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Calculate total coverage percentage
+          total_coverage=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')
+          echo "**Total Coverage:** $total_coverage" >> $GITHUB_STEP_SUMMARY
 
       - name: Release
         uses: softprops/action-gh-release@v2
