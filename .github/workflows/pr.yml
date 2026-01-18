@@ -54,6 +54,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Lines of code
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           export TOOL_NAME="scc"
           export GIT_ORG="boyter"
