@@ -86,14 +86,14 @@ jobs:
           scc --format html-table . | tee -a $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: test
+      - name: Test
         run: |
           echo "### Test report" >> $GITHUB_STEP_SUMMARY
 
           go test -race -coverprofile=coverage.txt -covermode=atomic -tags=unit ./... | tee -a $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: test coverage
+      - name: Test coverage
         run: |
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
 
