@@ -3,6 +3,7 @@ package httpx
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -116,6 +117,7 @@ type Client struct {
 	retryBaseDelay        time.Duration
 	retryMaxDelay         time.Duration
 	disableKeepAlive      bool
+	proxyURL              string       // Proxy URL (e.g., "http://proxy.example.com:8080")
 	logger                *slog.Logger // Optional logger (nil = no logging)
 }
 
@@ -259,6 +261,16 @@ func (b *ClientBuilder) WithLogger(logger *slog.Logger) *ClientBuilder {
 	return b
 }
 
+// WithProxy sets the proxy URL for HTTP requests.
+// The proxy URL should be in the format "http://proxy.example.com:8080" or "https://proxy.example.com:8080".
+// Pass an empty string to disable proxy (default behavior).
+// and returns the ClientBuilder for method chaining
+func (b *ClientBuilder) WithProxy(proxyURL string) *ClientBuilder {
+	b.client.proxyURL = proxyURL
+
+	return b
+}
+
 // Build creates and returns a new HTTP client with the specified settings
 // and retry strategy. The client works transparently, preserving any existing
 // headers in requests without requiring explicit configuration.
@@ -368,6 +380,18 @@ func (b *ClientBuilder) Build() *http.Client {
 		ExpectContinueTimeout: b.client.expectContinueTimeout,
 		DisableKeepAlives:     b.client.disableKeepAlive,
 		MaxIdleConnsPerHost:   b.client.maxIdleConnsPerHost,
+	}
+
+	// Configure proxy if set
+	if b.client.proxyURL != "" {
+		parsedProxyURL, err := url.Parse(b.client.proxyURL)
+		if err != nil {
+			if b.client.logger != nil {
+				b.client.logger.Warn("Failed to parse proxy URL, proceeding without proxy", "proxyURL", b.client.proxyURL, "error", err)
+			}
+		} else {
+			transport.Proxy = http.ProxyURL(parsedProxyURL)
+		}
 	}
 
 	// Create retry transport - this is the only layer needed for transparent operation

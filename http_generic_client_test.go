@@ -725,3 +725,123 @@ func TestGenericClient_OptionsIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestGenericClient_WithProxy(t *testing.T) {
+	t.Run("Create client with proxy URL", func(t *testing.T) {
+		proxyURL := "http://proxy.example.com:8080"
+		client := NewGenericClient[User](
+			WithProxy[User](proxyURL),
+		)
+
+		if client == nil {
+			t.Fatal("NewGenericClient returned nil")
+		}
+
+		if client.proxyURL == nil {
+			t.Fatal("proxyURL should be set")
+		}
+
+		if *client.proxyURL != proxyURL {
+			t.Errorf("Expected proxy URL %s, got %s", proxyURL, *client.proxyURL)
+		}
+	})
+
+	t.Run("Create client with HTTPS proxy", func(t *testing.T) {
+		proxyURL := "https://secure-proxy.example.com:3128"
+		client := NewGenericClient[User](
+			WithProxy[User](proxyURL),
+		)
+
+		if client == nil {
+			t.Fatal("NewGenericClient returned nil")
+		}
+
+		if client.proxyURL == nil || *client.proxyURL != proxyURL {
+			t.Errorf("Expected proxy URL %s", proxyURL)
+		}
+	})
+
+	t.Run("Create client without proxy", func(t *testing.T) {
+		client := NewGenericClient[User]()
+
+		if client == nil {
+			t.Fatal("NewGenericClient returned nil")
+		}
+
+		if client.proxyURL != nil {
+			t.Error("proxyURL should be nil when not configured")
+		}
+	})
+
+	t.Run("Create client with empty proxy (disable)", func(t *testing.T) {
+		client := NewGenericClient[User](
+			WithProxy[User](""),
+		)
+
+		if client == nil {
+			t.Fatal("NewGenericClient returned nil")
+		}
+
+		if client.proxyURL == nil {
+			t.Fatal("proxyURL should be set (even if empty)")
+		}
+
+		if *client.proxyURL != "" {
+			t.Error("Expected empty proxy URL")
+		}
+	})
+
+	t.Run("Build HTTP client with proxy", func(t *testing.T) {
+		proxyURL := "http://proxy.example.com:8080"
+		client := NewGenericClient[User](
+			WithProxy[User](proxyURL),
+		)
+
+		if client.httpClient == nil {
+			t.Fatal("httpClient should be initialized")
+		}
+
+		// Verify the transport has proxy configured
+		if httpClient, ok := client.httpClient.(*http.Client); ok {
+			if rt, ok := httpClient.Transport.(*retryTransport); ok {
+				if transport, ok := rt.Transport.(*http.Transport); ok {
+					if transport.Proxy == nil {
+						t.Error("Expected Proxy to be configured")
+					}
+				} else {
+					t.Error("Expected *http.Transport")
+				}
+			} else {
+				t.Error("Expected *retryTransport")
+			}
+		} else {
+			t.Error("Expected *http.Client")
+		}
+	})
+
+	t.Run("Combine proxy with other options", func(t *testing.T) {
+		proxyURL := "http://proxy.example.com:8080"
+		client := NewGenericClient[User](
+			WithProxy[User](proxyURL),
+			WithTimeout[User](10*time.Second),
+			WithMaxRetries[User](3),
+			WithRetryStrategy[User](ExponentialBackoffStrategy),
+		)
+
+		if client == nil {
+			t.Fatal("NewGenericClient returned nil")
+		}
+
+		if client.proxyURL == nil || *client.proxyURL != proxyURL {
+			t.Error("Proxy URL should be configured")
+		}
+
+		if client.timeout == nil || *client.timeout != 10*time.Second {
+			t.Error("Timeout should be configured")
+		}
+
+		if client.maxRetries == nil || *client.maxRetries != 3 {
+			t.Error("MaxRetries should be configured")
+		}
+	})
+}

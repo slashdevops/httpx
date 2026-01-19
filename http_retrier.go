@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -198,6 +199,7 @@ type retryClientConfig struct {
 	maxRetries    int
 	strategy      RetryStrategy
 	baseTransport http.RoundTripper
+	proxyURL      string // Proxy URL (e.g., "http://proxy.example.com:8080")
 	logger        *slog.Logger
 }
 
@@ -231,6 +233,15 @@ func WithLoggerRetry(logger *slog.Logger) RetryClientOption {
 	}
 }
 
+// WithProxyRetry sets the proxy URL for the retry client.
+// The proxy URL should be in the format "http://proxy.example.com:8080" or "https://proxy.example.com:8080".
+// Pass an empty string to disable proxy (default behavior).
+func WithProxyRetry(proxyURL string) RetryClientOption {
+	return func(c *retryClientConfig) {
+		c.proxyURL = proxyURL
+	}
+}
+
 // NewHTTPRetryClient creates a new http.Client configured with the retry transport.
 // Use the provided options to customize the retry behavior.
 // By default, it uses 3 retries with exponential backoff strategy and no logging.
@@ -248,6 +259,30 @@ func NewHTTPRetryClient(options ...RetryClientOption) *http.Client {
 
 	if config.baseTransport == nil {
 		config.baseTransport = http.DefaultTransport
+	}
+
+	// Configure proxy if provided
+	if config.proxyURL != "" {
+		// If base transport is http.Transport, we need to clone it to avoid mutating shared transport
+		if transport, ok := config.baseTransport.(*http.Transport); ok {
+			// Clone the transport to avoid mutating the original
+			clonedTransport := transport.Clone()
+
+			parsedProxyURL, err := url.Parse(config.proxyURL)
+			if err != nil {
+				if config.logger != nil {
+					config.logger.Warn("Failed to parse proxy URL, proceeding without proxy", "proxyURL", config.proxyURL, "error", err)
+				}
+			} else {
+				clonedTransport.Proxy = http.ProxyURL(parsedProxyURL)
+				config.baseTransport = clonedTransport
+			}
+		} else {
+			// If custom transport is provided that's not *http.Transport, log a warning
+			if config.logger != nil {
+				config.logger.Warn("Custom transport provided; proxy configuration ignored. Configure proxy on your custom transport directly.")
+			}
+		}
 	}
 
 	if config.strategy == nil {

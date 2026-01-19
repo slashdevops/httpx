@@ -201,3 +201,100 @@ func TestClientBuilder_WithRetryStrategyAsString(t *testing.T) {
 		})
 	}
 }
+
+func TestClientBuilder_WithProxy(t *testing.T) {
+	t.Run("Valid proxy URL", func(t *testing.T) {
+		builder := NewClientBuilder()
+		proxyURL := "http://proxy.example.com:8080"
+
+		builder.WithProxy(proxyURL)
+
+		assertEqual(t, proxyURL, builder.client.proxyURL)
+	})
+
+	t.Run("HTTPS proxy URL", func(t *testing.T) {
+		builder := NewClientBuilder()
+		proxyURL := "https://secure-proxy.example.com:3128"
+
+		builder.WithProxy(proxyURL)
+
+		assertEqual(t, proxyURL, builder.client.proxyURL)
+	})
+
+	t.Run("Empty proxy URL (disable proxy)", func(t *testing.T) {
+		builder := NewClientBuilder()
+		builder.WithProxy("")
+
+		assertEqual(t, "", builder.client.proxyURL)
+	})
+
+	t.Run("Proxy with authentication", func(t *testing.T) {
+		builder := NewClientBuilder()
+		proxyURL := "http://user:pass@proxy.example.com:8080"
+
+		builder.WithProxy(proxyURL)
+
+		assertEqual(t, proxyURL, builder.client.proxyURL)
+	})
+}
+
+func TestClientBuilder_Build_WithProxy(t *testing.T) {
+	t.Run("Build with valid proxy", func(t *testing.T) {
+		builder := NewClientBuilder()
+		proxyURL := "http://proxy.example.com:8080"
+
+		client := builder.WithProxy(proxyURL).Build()
+
+		assertNotNil(t, client)
+		assertNotNil(t, client.Transport)
+
+		// Verify that the transport has proxy configured
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				assertNotNil(t, transport.Proxy)
+			} else {
+				t.Error("Expected *http.Transport")
+			}
+		} else {
+			t.Error("Expected *retryTransport")
+		}
+	})
+
+	t.Run("Build without proxy", func(t *testing.T) {
+		builder := NewClientBuilder()
+
+		client := builder.Build()
+
+		assertNotNil(t, client)
+		assertNotNil(t, client.Transport)
+
+		// Verify that the transport has no proxy configured (nil)
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				// Proxy should be nil (not configured)
+				if transport.Proxy != nil {
+					t.Error("Expected Proxy to be nil when not configured")
+				}
+			}
+		}
+	})
+
+	t.Run("Build with invalid proxy URL", func(t *testing.T) {
+		builder := NewClientBuilder()
+		invalidProxyURL := "://invalid-url"
+
+		client := builder.WithProxy(invalidProxyURL).Build()
+
+		// Should still build successfully, but proxy will be ignored
+		assertNotNil(t, client)
+
+		// Verify that the transport has no proxy configured due to parse error
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				if transport.Proxy != nil {
+					t.Error("Expected Proxy to be nil when invalid URL provided")
+				}
+			}
+		}
+	})
+}
