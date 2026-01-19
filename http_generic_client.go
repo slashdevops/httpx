@@ -33,6 +33,7 @@ type GenericClient[T any] struct {
 	retryMaxDelay         *time.Duration
 	retryStrategy         *Strategy
 	disableKeepAlive      *bool
+	proxyURL              *string      // Proxy URL (e.g., "http://proxy.example.com:8080")
 	logger                *slog.Logger // Optional logger (nil = no logging)
 }
 
@@ -138,6 +139,10 @@ func NewGenericClient[T any](options ...GenericClientOption[T]) *GenericClient[T
 
 	if client.logger != nil {
 		builder.WithLogger(client.logger)
+	}
+
+	if client.proxyURL != nil {
+		builder.WithProxy(*client.proxyURL)
 	}
 
 	client.httpClient = builder.Build()
@@ -258,6 +263,15 @@ func WithRetryStrategyAsString[T any](strategy string) GenericClientOption[T] {
 func WithLogger[T any](logger *slog.Logger) GenericClientOption[T] {
 	return func(c *GenericClient[T]) {
 		c.logger = logger
+	}
+}
+
+// WithProxy sets the proxy URL for HTTP requests.
+// The proxy URL should be in the format "http://proxy.example.com:8080" or "https://proxy.example.com:8080".
+// Pass an empty string to disable proxy (default behavior).
+func WithProxy[T any](proxyURL string) GenericClientOption[T] {
+	return func(c *GenericClient[T]) {
+		c.proxyURL = &proxyURL
 	}
 }
 

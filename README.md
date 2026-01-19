@@ -18,6 +18,7 @@ A comprehensive Go package for building and executing HTTP requests with advance
 - 🎯 **Type-Safe Generic Client** - Go generics for type-safe HTTP responses
 - ✅ **Input Validation** - Comprehensive validation with error accumulation
 - 🔐 **Authentication Support** - Built-in Basic and Bearer token authentication
+- 🌐 **Proxy Support** - HTTP/HTTPS proxy configuration with authentication (supports corporate proxies, authenticated proxies, and custom ports)
 - 📝 **Optional Logging** - slog integration for observability (disabled by default)
 - 📦 **Zero External Dependencies** - Only Go standard library, no third-party packages
 
@@ -31,6 +32,7 @@ A comprehensive Go package for building and executing HTTP requests with advance
   - [Generic HTTP Client](#generic-http-client)
   - [Retry Logic](#retry-logic)
   - [Client Builder](#client-builder)
+  - [Proxy Configuration](#proxy-configuration)
   - [Logging](#logging)
 - [Examples](#examples)
 - [API Reference](#api-reference)
@@ -445,6 +447,174 @@ client := httpx.NewClientBuilder().
 | TLSHandshakeTimeout | 10s | 1s - 15s |
 
 The builder validates all settings and uses defaults for out-of-range values.
+
+### Proxy Configuration
+
+The httpx package provides comprehensive HTTP/HTTPS proxy support across all client types. Configure proxies to route your requests through corporate firewalls, load balancers, or testing proxies.
+
+#### Key Features
+
+- ✅ HTTP and HTTPS proxy support
+- 🔐 Proxy authentication (username/password)
+- 🔄 Works with retry logic
+- 🎯 Compatible with all client types
+- 🌐 Full URL or host:port formats
+- 📝 Graceful fallback on invalid URLs
+
+#### Basic Usage
+
+##### With ClientBuilder
+
+```go
+// HTTP proxy
+client := httpx.NewClientBuilder().
+    WithProxy("http://proxy.example.com:8080").
+    WithTimeout(10 * time.Second).
+    Build()
+
+// HTTPS proxy
+client := httpx.NewClientBuilder().
+    WithProxy("https://secure-proxy.example.com:3128").
+    Build()
+```
+
+##### With GenericClient
+
+```go
+type User struct {
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+client := httpx.NewGenericClient[User](
+    httpx.WithProxy[User]("http://proxy.example.com:8080"),
+    httpx.WithTimeout[User](10*time.Second),
+    httpx.WithMaxRetries[User](3),
+)
+
+response, err := client.Get("https://api.example.com/users/1")
+```
+
+##### With Retry Client
+
+```go
+client := httpx.NewHTTPRetryClient(
+    httpx.WithProxyRetry("http://proxy.example.com:8080"),
+    httpx.WithMaxRetriesRetry(5),
+    httpx.WithRetryStrategyRetry(
+        httpx.ExponentialBackoff(500*time.Millisecond, 30*time.Second),
+    ),
+)
+```
+
+#### Proxy Authentication
+
+Include credentials directly in the proxy URL:
+
+```go
+client := httpx.NewClientBuilder().
+    WithProxy("http://username:password@proxy.example.com:8080").
+    Build()
+```
+
+**Security Note:** For production, consider using environment variables or secret management:
+
+```go
+proxyURL := fmt.Sprintf("http://%s:%s@%s:%s",
+    os.Getenv("PROXY_USER"),
+    os.Getenv("PROXY_PASS"),
+    os.Getenv("PROXY_HOST"),
+    os.Getenv("PROXY_PORT"),
+)
+
+client := httpx.NewClientBuilder().
+    WithProxy(proxyURL).
+    Build()
+```
+
+#### Common Proxy Ports
+
+- **HTTP Proxy**: 8080, 3128, 8888
+- **HTTPS Proxy**: 3128, 8443
+- **Squid**: 3128 (most common)
+- **Corporate Proxies**: 8080, 80
+
+#### Disable Proxy
+
+Override environment proxy settings by passing an empty string:
+
+```go
+// Disable proxy (ignore HTTP_PROXY environment variable)
+client := httpx.NewClientBuilder().
+    WithProxy("").
+    Build()
+```
+
+#### Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "time"
+
+    "github.com/slashdevops/httpx"
+)
+
+type APIResponse struct {
+    Message string `json:"message"`
+    Status  string `json:"status"`
+}
+
+func main() {
+    // Configure client with proxy and full options
+    client := httpx.NewGenericClient[APIResponse](
+        httpx.WithProxy[APIResponse]("http://proxy.example.com:8080"),
+        httpx.WithTimeout[APIResponse](15*time.Second),
+        httpx.WithMaxRetries[APIResponse](5),
+        httpx.WithRetryStrategy[APIResponse](httpx.JitterBackoffStrategy),
+        httpx.WithRetryBaseDelay[APIResponse](500*time.Millisecond),
+        httpx.WithRetryMaxDelay[APIResponse](30*time.Second),
+    )
+
+    // Build request with authentication
+    req, err := httpx.NewRequestBuilder("https://api.example.com").
+        WithMethodGET().
+        WithPath("/data").
+        WithBearerAuth("your-token-here").
+        WithHeader("Accept", "application/json").
+        Build()
+
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Execute through proxy
+    response, err := client.Do(req)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Printf("Response: %s\n", response.Data.Message)
+}
+```
+
+#### Error Handling
+
+The library gracefully handles proxy configuration errors:
+
+```go
+client := httpx.NewClientBuilder().
+    WithProxy("://invalid-url").  // Invalid URL
+    WithLogger(logger).            // Optional: log warnings
+    Build()
+
+// Client builds successfully, but proxy is not configured
+// Warning logged if logger is provided
+```
 
 ### Logging
 

@@ -682,3 +682,140 @@ func TestRetryTransport_RequestBodyGetBodyError(t *testing.T) {
 		t.Errorf("Expected only 1 attempt before GetBody error, got %d", atomic.LoadInt32(&attempts))
 	}
 }
+
+func TestNewHTTPRetryClient_WithProxy(t *testing.T) {
+	t.Run("Create retry client with proxy", func(t *testing.T) {
+		proxyURL := "http://proxy.example.com:8080"
+		client := NewHTTPRetryClient(
+			WithProxyRetry(proxyURL),
+		)
+
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		// Verify the transport has proxy configured
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				if transport.Proxy == nil {
+					t.Error("Expected Proxy to be configured")
+				}
+			} else {
+				t.Error("Expected *http.Transport")
+			}
+		} else {
+			t.Error("Expected *retryTransport")
+		}
+	})
+
+	t.Run("Create retry client with HTTPS proxy", func(t *testing.T) {
+		proxyURL := "https://secure-proxy.example.com:3128"
+		client := NewHTTPRetryClient(
+			WithProxyRetry(proxyURL),
+			WithMaxRetriesRetry(5),
+		)
+
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if rt.MaxRetries != 5 {
+				t.Errorf("Expected MaxRetries to be 5, got %d", rt.MaxRetries)
+			}
+
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				if transport.Proxy == nil {
+					t.Error("Expected Proxy to be configured")
+				}
+			}
+		}
+	})
+
+	t.Run("Create retry client without proxy", func(t *testing.T) {
+		client := NewHTTPRetryClient()
+
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		// Default transport should not have proxy configured
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				// Note: http.DefaultTransport may have Proxy set to use environment variables
+				// so we just verify the client was created successfully
+				_ = transport.Proxy
+			}
+		}
+	})
+
+	t.Run("Invalid proxy URL", func(t *testing.T) {
+		invalidProxyURL := "://invalid-url"
+		client := NewHTTPRetryClient(
+			WithProxyRetry(invalidProxyURL),
+		)
+
+		// Client should still be created
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		// When invalid URL is provided, a new transport is created
+		// but proxy won't be properly configured (will fall back to ProxyFromEnvironment)
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				// Transport is created, but proxy configuration failed gracefully
+				_ = transport.Proxy
+			}
+		}
+	})
+
+	t.Run("Proxy with custom base transport", func(t *testing.T) {
+		// Create a custom transport
+		customTransport := &http.Transport{
+			MaxIdleConns: 50,
+		}
+
+		proxyURL := "http://proxy.example.com:8080"
+		client := NewHTTPRetryClient(
+			WithBaseTransport(customTransport),
+			WithProxyRetry(proxyURL),
+		)
+
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		// Custom transport should have proxy configured
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			if transport, ok := rt.Transport.(*http.Transport); ok {
+				if transport.MaxIdleConns != 50 {
+					t.Error("Expected custom transport to be used")
+				}
+
+				if transport.Proxy == nil {
+					t.Error("Expected Proxy to be configured on custom transport")
+				}
+			}
+		}
+	})
+
+	t.Run("Empty proxy URL", func(t *testing.T) {
+		client := NewHTTPRetryClient(
+			WithProxyRetry(""),
+		)
+
+		if client == nil {
+			t.Fatal("NewHTTPRetryClient returned nil")
+		}
+
+		// Empty proxy URL doesn't trigger proxy configuration
+		// Should use default transport
+		if rt, ok := client.Transport.(*retryTransport); ok {
+			// Verify transport exists (may be DefaultTransport)
+			if rt.Transport == nil {
+				t.Error("Expected Transport to be set")
+			}
+		}
+	})
+}

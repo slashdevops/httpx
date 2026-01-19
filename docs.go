@@ -147,6 +147,7 @@
 //   - WithExpectContinueTimeout: Set expect continue timeout
 //   - WithMaxIdleConnsPerHost: Set maximum idle connections per host
 //   - WithDisableKeepAlive: Disable HTTP keep-alive
+//   - WithProxy: Configure HTTP/HTTPS proxy server
 //   - WithHTTPClient: Use a pre-configured HTTP client (takes precedence)
 //
 // Integration with RequestBuilder:
@@ -257,6 +258,9 @@
 //	    WithRetryBaseDelay(500 * time.Millisecond).
 //	    WithRetryMaxDelay(10 * time.Second).
 //
+//	    // Proxy configuration
+//	    WithProxy("http://proxy.example.com:8080").
+//
 //	    Build()
 //
 // Combine with GenericClient:
@@ -359,6 +363,65 @@
 //     if apiErr, ok := err.(*httpx.ErrorResponse); ok {
 //     // Handle specific status codes
 //     }
+//
+// # Proxy Configuration
+//
+// The package provides comprehensive proxy support for all HTTP clients.
+// Proxy configuration works transparently across all client types and
+// supports both HTTP and HTTPS proxies with optional authentication.
+//
+// Basic proxy configuration with ClientBuilder:
+//
+//	client := httpx.NewClientBuilder().
+//	    WithProxy("http://proxy.example.com:8080").
+//	    Build()
+//
+// HTTPS proxy:
+//
+//	client := httpx.NewClientBuilder().
+//	    WithProxy("https://secure-proxy.example.com:3128").
+//	    Build()
+//
+// Proxy with authentication:
+//
+//	client := httpx.NewClientBuilder().
+//	    WithProxy("http://username:password@proxy.example.com:8080").
+//	    Build()
+//
+// Proxy with GenericClient:
+//
+//	client := httpx.NewGenericClient[User](
+//	    httpx.WithProxy[User]("http://proxy.example.com:8080"),
+//	    httpx.WithTimeout[User](10*time.Second),
+//	    httpx.WithMaxRetries[User](3),
+//	)
+//
+// Proxy with retry client:
+//
+//	client := httpx.NewHTTPRetryClient(
+//	    httpx.WithProxyRetry("http://proxy.example.com:8080"),
+//	    httpx.WithMaxRetriesRetry(5),
+//	)
+//
+// Disable proxy (override environment variables):
+//
+//	client := httpx.NewClientBuilder().
+//	    WithProxy(""). // Empty string disables proxy
+//	    Build()
+//
+// Common proxy ports:
+//   - HTTP proxy: 8080, 3128, 8888
+//   - HTTPS proxy: 3128, 8443
+//   - SOCKS proxy: 1080 (not directly supported, use custom transport)
+//
+// The proxy configuration:
+//   - Works transparently with all request types
+//   - Preserves all headers and authentication
+//   - Compatible with retry logic
+//   - Supports connection pooling
+//   - Respects timeout settings
+//   - Validates proxy URL format
+//   - Falls back gracefully on invalid URLs
 //
 // # Thread Safety
 //
