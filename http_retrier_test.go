@@ -1047,6 +1047,56 @@ func TestRetryTransport_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestRetryTransport_NoRetryOnContextDeadlineExceeded(t *testing.T) {
+	var attempts int32 = 0
+
+	mockRT := &mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			atomic.AddInt32(&attempts, 1)
+			// Simulate the error that http.Client produces when Client.Timeout fires
+			return nil, fmt.Errorf("Post \"http://localhost:11434/api/generate\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
+		},
+	}
+
+	retryRT := &retryTransport{
+		Transport:     mockRT,
+		MaxRetries:    5,
+		RetryStrategy: FixedDelay(1 * time.Millisecond),
+	}
+
+	// Create a request with an already-expired context to simulate Client.Timeout behavior
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately to simulate expired deadline
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost:11434/api/generate", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	start := time.Now()
+	_, err = retryRT.RoundTrip(req)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected an error, got nil")
+	}
+
+	// Should have made exactly 1 attempt — no retries when context is done
+	if atomic.LoadInt32(&attempts) != 1 {
+		t.Errorf("Expected exactly 1 attempt (no retries on context deadline), got %d", atomic.LoadInt32(&attempts))
+	}
+
+	// Should return quickly without waiting for retry delays
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("Expected immediate return, but took %v", elapsed)
+	}
+
+	// The error should be the original transport error, not wrapped as "retry cancelled"
+	if strings.Contains(err.Error(), "retry cancelled") {
+		t.Errorf("Error should not contain 'retry cancelled', got: %v", err)
+	}
+}
+
 func TestRetryTransport_ContextCancelledDuringRetryDelay(t *testing.T) {
 	var attempts int32 = 0
 
