@@ -126,6 +126,16 @@ func (r *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}
 
+		// Do not retry if the error is due to context cancellation or deadline exceeded.
+		// When http.Client.Timeout fires, it cancels the request context. Since this
+		// context is shared across all retry attempts, subsequent retries would fail
+		// immediately. Return the original error to avoid misleading "retry cancelled" messages.
+		if err != nil {
+			if ctx := req.Context(); ctx != nil && ctx.Err() != nil {
+				return nil, err
+			}
+		}
+
 		// Check if we should retry
 		if attempt < r.MaxRetries {
 			delay := retryStrategy(attempt)
