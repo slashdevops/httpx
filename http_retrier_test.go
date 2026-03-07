@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -405,6 +406,86 @@ func TestRetryTransport_NilRetryStrategyUsesDefault(t *testing.T) {
 	// Check that it actually retried (implying a strategy was used)
 	if atomic.LoadInt32(&attempts) != int32(maxRetries+1) {
 		t.Errorf("Expected %d attempts (implying default strategy used), got %d", maxRetries+1, atomic.LoadInt32(&attempts))
+	}
+}
+
+func TestRetryTransport_RetriesOn429TooManyRequests(t *testing.T) {
+	var attempts int32 = 0
+	maxRetries := 2
+
+	mockRT := &mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			currentAttempt := atomic.LoadInt32(&attempts)
+			atomic.AddInt32(&attempts, 1)
+
+			if currentAttempt < 2 {
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests, // 429
+					Body:       io.NopCloser(strings.NewReader("Too Many Requests")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("Success")),
+				Header:     make(http.Header),
+			}, nil
+		},
+	}
+
+	retryRT := &retryTransport{
+		Transport:     mockRT,
+		MaxRetries:    maxRetries,
+		RetryStrategy: FixedDelay(1 * time.Millisecond),
+	}
+
+	req := httptest.NewRequest("GET", "http://example.com", nil)
+	resp, err := retryRT.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if atomic.LoadInt32(&attempts) != 3 {
+		t.Errorf("Expected 3 attempts (2 retries after 429), got %d", atomic.LoadInt32(&attempts))
+	}
+}
+
+func TestRetryTransport_FailureAfterMaxRetries_429(t *testing.T) {
+	var attempts int32 = 0
+	maxRetries := 2
+
+	mockRT := &mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			atomic.AddInt32(&attempts, 1)
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests, // Always 429
+				Body:       io.NopCloser(strings.NewReader("Too Many Requests")),
+				Header:     make(http.Header),
+			}, nil
+		},
+	}
+
+	retryRT := &retryTransport{
+		Transport:     mockRT,
+		MaxRetries:    maxRetries,
+		RetryStrategy: FixedDelay(1 * time.Millisecond),
+	}
+
+	req := httptest.NewRequest("GET", "http://example.com", nil)
+	resp, err := retryRT.RoundTrip(req)
+
+	if err == nil {
+		t.Fatalf("Expected an error, got nil response: %v", resp)
+	}
+	if !errors.Is(err, ErrAllRetriesFailed) {
+		t.Errorf("Expected error to wrap ErrAllRetriesFailed, got %v", err)
+	}
+	if atomic.LoadInt32(&attempts) != int32(maxRetries+1) {
+		t.Errorf("Expected %d attempts, got %d", maxRetries+1, atomic.LoadInt32(&attempts))
 	}
 }
 
@@ -818,4 +899,207 @@ func TestNewHTTPRetryClient_WithProxy(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRetryTransport_ServerExceedsClientTimeout(t *testing.T) {
+	// Start a test server that takes longer to respond than the client timeout
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond) // Server delays response
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	// Use context timeout (per-request) which is shorter than the server delay.
+	// This ensures the timeout is respected regardless of retry configuration.
+	httpClient := NewClientBuilder().
+		WithTimeout(10 * time.Second).
+		WithMaxRetries(1).
+		WithRetryBaseDelay(300 * time.Millisecond).
+		Build()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	_, err = httpClient.Do(req)
+	if err == nil {
+		t.Fatal("Expected timeout error, got nil")
+	}
+
+	// The error should indicate a timeout/deadline exceeded
+	if !errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "deadline exceeded") && !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("Expected timeout-related error, got: %v", err)
+	}
+}
+
+func TestRetryTransport_LargeTimeoutPreserved(t *testing.T) {
+	// Verify that large timeouts (e.g., for LLM API calls) work correctly
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond) // Simulate slow response
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	// Build a client with a large timeout that should NOT be silently reset
+	httpClient := NewClientBuilder().
+		WithTimeout(120 * time.Second). // Large timeout for LLM calls
+		WithMaxRetries(1).
+		WithRetryBaseDelay(300 * time.Millisecond).
+		Build()
+
+	// Verify the timeout was preserved (not reset to default 5s)
+	if httpClient.Timeout != 120*time.Second {
+		t.Errorf("Expected timeout 120s, got %v (timeout was silently reset)", httpClient.Timeout)
+	}
+
+	req, err := http.NewRequest("GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("Expected success with large timeout, got error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 OK, got %d", resp.StatusCode)
+	}
+}
+
+func TestRetryTransport_ContextTimeout(t *testing.T) {
+	// Start a test server that takes a while to respond
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	httpClient := NewClientBuilder().
+		WithTimeout(10 * time.Second). // Large client timeout
+		WithMaxRetries(1).
+		WithRetryBaseDelay(300 * time.Millisecond).
+		Build()
+
+	// Use a context with a short timeout that expires before the server responds
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	_, err = httpClient.Do(req)
+	if err == nil {
+		t.Fatal("Expected context timeout error, got nil")
+	}
+
+	// The error should be context-related
+	if !errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Errorf("Expected context deadline exceeded error, got: %v", err)
+	}
+}
+
+func TestRetryTransport_ContextCancellation(t *testing.T) {
+	// Start a test server that takes a while to respond
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	httpClient := NewClientBuilder().
+		WithTimeout(10 * time.Second).
+		WithMaxRetries(1).
+		WithRetryBaseDelay(300 * time.Millisecond).
+		Build()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Cancel the context shortly after sending the request
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err = httpClient.Do(req)
+	if err == nil {
+		t.Fatal("Expected context cancellation error, got nil")
+	}
+
+	if !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("Expected context canceled error, got: %v", err)
+	}
+}
+
+func TestRetryTransport_ContextCancelledDuringRetryDelay(t *testing.T) {
+	var attempts int32 = 0
+
+	mockRT := &mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			atomic.AddInt32(&attempts, 1)
+			// Always return 500 to trigger retry
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("Server Error")),
+				Header:     make(http.Header),
+			}, nil
+		},
+	}
+
+	retryRT := &retryTransport{
+		Transport:     mockRT,
+		MaxRetries:    3,
+		RetryStrategy: FixedDelay(2 * time.Second), // Long delay to ensure context cancels during it
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://example.com", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Cancel context after a short time (during the retry delay)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err = retryRT.RoundTrip(req)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected context cancellation error, got nil")
+	}
+
+	// Should have completed quickly (not waited the full 2s delay)
+	if elapsed > 1*time.Second {
+		t.Errorf("Expected quick cancellation, but took %v (should be < 1s)", elapsed)
+	}
+
+	// Should have made exactly 1 attempt before cancellation during delay
+	if atomic.LoadInt32(&attempts) != 1 {
+		t.Errorf("Expected 1 attempt before context cancel, got %d", atomic.LoadInt32(&attempts))
+	}
+
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Expected context.Canceled error, got: %v", err)
+	}
 }

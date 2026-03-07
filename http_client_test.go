@@ -88,6 +88,18 @@ func TestClientBuilder_WithMethods(t *testing.T) {
 	assertEqual(t, Strategy("invalid"), client.retryStrategyType)
 }
 
+func TestClientBuilder_Build_LargeTimeout(t *testing.T) {
+	// Verify that large timeouts (e.g., for LLM calls) are preserved and not silently reset
+	largeTimeout := 120 * time.Second
+
+	httpClient := NewClientBuilder().
+		WithTimeout(largeTimeout).
+		Build()
+
+	assertNotNil(t, httpClient)
+	assertEqual(t, largeTimeout, httpClient.Timeout)
+}
+
 func TestClientBuilder_Build(t *testing.T) {
 	baseDelay := 200 * time.Millisecond
 	maxDelay := 2 * time.Second
