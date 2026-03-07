@@ -18,7 +18,7 @@ const (
 	ValidMinTLSHandshakeTimeout   = 1 * time.Second
 	ValidMaxExpectContinueTimeout = 5 * time.Second
 	ValidMinExpectContinueTimeout = 1 * time.Second
-	ValidMaxTimeout               = 30 * time.Second
+	ValidMaxTimeout               = 600 * time.Second
 	ValidMinTimeout               = 1 * time.Second
 	ValidMaxRetries               = 10
 	ValidMinRetries               = 1

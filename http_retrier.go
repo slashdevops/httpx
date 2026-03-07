@@ -104,8 +104,8 @@ func (r *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		resp, err = transport.RoundTrip(req)
 
-		// Success conditions: no error and status code below 500
-		if err == nil && resp.StatusCode < http.StatusInternalServerError {
+		// Success conditions: no error and status code below 500 (excluding 429 Too Many Requests)
+		if err == nil && resp.StatusCode < http.StatusInternalServerError && resp.StatusCode != http.StatusTooManyRequests {
 			return resp, nil
 		}
 
@@ -153,7 +153,21 @@ func (r *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 				}
 			}
 
-			time.Sleep(delay)
+			// Respect context cancellation during retry delay
+			if ctx := req.Context(); ctx != nil {
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					if err != nil {
+						return nil, fmt.Errorf("retry cancelled: %w", ctx.Err())
+					}
+					return nil, fmt.Errorf("retry cancelled: %w", ctx.Err())
+				case <-timer.C:
+				}
+			} else {
+				time.Sleep(delay)
+			}
 		} else {
 			// Max retries reached, log and return the last error or a generic failure error
 			if r.logger != nil {

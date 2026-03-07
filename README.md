@@ -438,7 +438,7 @@ client := httpx.NewClientBuilder().
 
 | Setting | Default | Valid Range |
 |---------|---------|-------------|
-| Timeout | 5s | 1s - 30s |
+| Timeout | 5s | 1s - 600s |
 | MaxRetries | 3 | 1 - 10 |
 | RetryBaseDelay | 500ms | 300ms - 5s |
 | RetryMaxDelay | 10s | 300ms - 120s |

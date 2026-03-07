@@ -275,7 +275,7 @@
 //	    httpx.//	)
 //
 // Default values (validated and adjusted if out of range):
-//   - Timeout: 5 seconds (valid: 1s-30s)
+//   - Timeout: 5 seconds (valid: 1s-600s)
 //   - MaxRetries: 3 (valid: 1-10)
 //   - RetryBaseDelay: 500ms (valid: 300ms-5s)
 //   - RetryMaxDelay: 10s (valid: 300ms-120s)
