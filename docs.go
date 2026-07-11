@@ -22,8 +22,8 @@
 //
 //	req, err := httpx.NewRequestBuilder("https://api.example.com").
 //	    WithMethodGET().
-//	    Path("/users/123").
-//	    Header("Accept", "application/json").
+//	    WithPath("/users/123").
+//	    WithHeader("Accept", "application/json").
 //	    Build()
 //
 // Use type-safe generic client:
@@ -33,9 +33,8 @@
 //	    Name  string `json:"name"`
 //	}
 //
-//	client := httpx.NewGenericClient[User](
-//	    httpx.//	)
-//	response, err := client.Get("/users/123")
+//	client := httpx.NewGenericClient[User]()
+//	response, err := client.Get("https://api.example.com/users/123")
 //	fmt.Printf("User: %s\n", response.Data.Name)
 //
 // # Request Builder
@@ -48,11 +47,11 @@
 //
 //	req, err := httpx.NewRequestBuilder("https://api.example.com").
 //	    WithMethodPOST().
-//	    Path("/users").
-//	    QueryParam("notify", "true").
-//	    Header("Content-Type", "application/json").
-//	    BearerAuth("your-token-here").
-//	    JSONBody(user).
+//	    WithPath("/users").
+//	    WithQueryParam("notify", "true").
+//	    WithHeader("Content-Type", "application/json").
+//	    WithBearerAuth("your-token-here").
+//	    WithJSONBody(user).
 //	    Build()
 //
 // Request builder features:
@@ -73,8 +72,8 @@
 // detect multiple issues at once:
 //
 //	builder := httpx.NewRequestBuilder("https://api.example.com")
-//	builder.HTTPMethod("")           // Error: empty method
-//	builder.WithHeader("", "value")      // Error: empty header key
+//	builder.WithMethod("")                // Error: empty method
+//	builder.WithHeader("", "value")       // Error: empty header key
 //	builder.WithQueryParam("key=", "val") // Error: invalid character in key
 //
 //	// Check accumulated errors
@@ -90,9 +89,9 @@
 // Builder reuse:
 //
 //	builder := httpx.NewRequestBuilder("https://api.example.com")
-//	req1, _ := builder.WithWithMethodGET().WithPath("/users").Build()
+//	req1, _ := builder.WithMethodGET().WithPath("/users").Build()
 //	builder.Reset() // Clear state
-//	req2, _ := builder.WithWithMethodPOST().WithPath("/posts").Build()
+//	req2, _ := builder.WithMethodPOST().WithPath("/posts").Build()
 //
 // # Generic HTTP Client
 //
@@ -115,7 +114,7 @@
 //	)
 //
 //	// GET request - response.Data is strongly typed as User
-//	response, err := client.Get("/users/1")
+//	response, err := client.Get("https://api.example.com/users/1")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -154,10 +153,10 @@
 //
 //	req, err := httpx.NewRequestBuilder("https://api.example.com").
 //	    WithMethodPOST().
-//	    Path("/users").
-//	    ContentType("application/json").
-//	    Header("X-Request-ID", "unique-123").
-//	    JSONBody(newUser).
+//	    WithPath("/users").
+//	    WithContentType("application/json").
+//	    WithHeader("X-Request-ID", "unique-123").
+//	    WithJSONBody(newUser).
 //	    Build()
 //
 //	response, err := client.Execute(req) // Type-safe execution
@@ -167,12 +166,12 @@
 //	userClient := httpx.NewGenericClient[User](...)
 //	postClient := httpx.NewGenericClient[Post](...)
 //
-//	user, _ := userClient.Get("/users/1")
-//	posts, _ := postClient.Get(fmt.Sprintf("/users/%d/posts", user.Data.ID))
+//	user, _ := userClient.Get("https://api.example.com/users/1")
+//	posts, _ := postClient.Get(fmt.Sprintf("https://api.example.com/users/%d/posts", user.Data.ID))
 //
 // Error handling:
 //
-//	response, err := client.Get("/users/999")
+//	response, err := client.Get("https://api.example.com/users/999")
 //	if err != nil {
 //	    if apiErr, ok := err.(*httpx.ErrorResponse); ok {
 //	        // Structured API error
@@ -272,7 +271,7 @@
 //
 //	client := httpx.NewGenericClient[User](
 //	    httpx.WithHTTPClient[User](retryClient),
-//	    httpx.//	)
+//	)
 //
 // Default values (validated and adjusted if out of range):
 //   - Timeout: 5 seconds (valid: 1s-600s)
@@ -299,7 +298,7 @@
 // Error handling examples:
 //
 //	// Generic client errors
-//	response, err := client.Get("/users/999")
+//	response, err := client.Get("https://api.example.com/users/999")
 //	if err != nil {
 //	    if apiErr, ok := err.(*httpx.ErrorResponse); ok {
 //	        switch apiErr.StatusCode {
@@ -331,8 +330,8 @@
 //  1. Use type-safe clients for JSON APIs:
 //
 //     client := httpx.NewGenericClient[User](...)
-//     response, err := client.Get("/users/1")
-//     // response.Data is User, not interface{}
+//     response, err := client.Get("https://api.example.com/users/1")
+//     // response.Data is User, not any
 //
 //  2. Configure retry logic for production:
 //
@@ -440,7 +439,7 @@
 //	    wg.Add(1)
 //	    go func(id int) {
 //	        defer wg.Done()
-//	        user, err := client.Get(fmt.Sprintf("/users/%d", id))
+//	        user, err := client.Get(fmt.Sprintf("https://api.example.com/users/%d", id))
 //	        // Process user
 //	    }(i)
 //	}
