@@ -47,7 +47,7 @@ A comprehensive Go package for building and executing HTTP requests with advance
 
 ## Installation
 
-**Requirements:** Go 1.22 or higher
+**Requirements:** Go 1.27 or higher
 
 ```bash
 go get github.com/slashdevops/httpx

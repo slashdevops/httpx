@@ -13,9 +13,9 @@ import (
 
 // Example demonstrates using exponential backoff.
 func Example() {
-	var requestCount int32
+	var requestCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		if count <= 3 { // Fail first 3 times
 			fmt.Printf("Server: Request %d -> 500 Internal Server Error\n", count)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -60,11 +60,11 @@ func Example() {
 // ExampleNewHTTPRetryClient_withExistingAuth demonstrates how the default client
 // transparently preserves existing authentication headers in requests.
 func ExampleNewHTTPRetryClient_withExistingAuth() {
-	var requestCount int32
+	var requestCount atomic.Int32
 
 	// Create a server that requires authentication
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		auth := r.Header.Get("Authorization")
 
 		if auth == "" {
@@ -107,7 +107,7 @@ func ExampleNewHTTPRetryClient_withExistingAuth() {
 
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("Client: Success! Status=%s, Body='%s'\n", resp.Status, string(body))
-	fmt.Printf("Client: Auth header preserved through %d retries\n", atomic.LoadInt32(&requestCount))
+	fmt.Printf("Client: Auth header preserved through %d retries\n", requestCount.Load())
 
 	// Output:
 	// Client: Making authenticated request...
@@ -167,11 +167,11 @@ func ExampleNewClientBuilder_transparent() {
 // ExampleNewHTTPRetryClient_withCustomTransport demonstrates using a custom base transport
 // with specific transport settings while maintaining transparent retry behavior.
 func ExampleNewHTTPRetryClient_withCustomTransport() {
-	var requestCount int32
+	var requestCount atomic.Int32
 
 	// Create a test server that fails initially to show retry behavior with custom transport
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		fmt.Printf("Server: Request %d from custom transport\n", count)
 
 		if count <= 1 {

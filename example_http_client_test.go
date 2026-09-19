@@ -112,7 +112,7 @@ func ExampleNewClientBuilder_connectionPooling() {
 		Build()
 
 	// Reuse connections efficiently across multiple requests
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		resp, err := client.Get(fmt.Sprintf("https://api.example.com/items/%d", i))
 		if err != nil {
 			log.Printf("Request %d failed: %v", i, err)
