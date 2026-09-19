@@ -3,7 +3,6 @@
 [![main branch](https://github.com/slashdevops/httpx/actions/workflows/main.yml/badge.svg)](https://github.com/slashdevops/httpx/actions/workflows/main.yml)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/slashdevops/httpx?style=plastic)
 [![Go Reference](https://pkg.go.dev/badge/github.com/slashdevops/httpx.svg)](https://pkg.go.dev/github.com/slashdevops/httpx)
-[![Go Report Card](https://goreportcard.com/badge/github.com/slashdevops/httpx)](https://goreportcard.com/report/github.com/slashdevops/httpx)
 [![license](https://img.shields.io/github/license/slashdevops/httpx.svg)](https://github.com/slashdevops/httpx/blob/main/LICENSE)
 [![Release](https://github.com/slashdevops/httpx/actions/workflows/release.yml/badge.svg)](https://github.com/slashdevops/httpx/actions/workflows/release.yml)
 
